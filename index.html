@@ -4078,25 +4078,21 @@ Already have an account?
 
 </div>
 
-<button onclick="logout()" class="px-3 py-1.5 bg-rose-950/60 border border-rose-500/40 text-rose-400 text-xs font-tech font-bold rounded-xl">Logout</button>
-
 </header>
 
 <main class="staff-portal-content max-w-5xl mx-auto px-4 pt-20 pb-12 space-y-6">
 
 <section class="staff-tab-panel space-y-6" data-staff-panel="dashboard" aria-label="Staff dashboard">
-<div class="staff-page-heading">
-  <h1>Staff Dashboard</h1>
-  <p>Your appointments and the latest hospital updates.</p>
-</div>
 <div class="glass-card p-4 rounded-2xl flex justify-between items-center" id="staffDashboardCard">
 
-<div>
-
-<span class="text-xs text-slate-400">Your staff workspace</span>
-
-<h2 class="text-lg font-bold text-white font-tech">Welcome to the Staff Portal</h2>
-
+<div class="staff-dashboard-identity-copy">
+  <span class="staff-dashboard-eyebrow">Your staff workspace</span>
+  <h2 class="staff-dashboard-welcome">Welcome back, <span id="staffDashboardName">Staff Member</span></h2>
+  <p class="staff-dashboard-caption">Your appointments and hospital updates at a glance.</p>
+</div>
+<div class="staff-dashboard-photo-wrap" aria-hidden="true">
+  <img id="staffDashboardPhoto" class="staff-dashboard-photo" alt="" hidden>
+  <div id="staffDashboardPhotoPlaceholder" class="staff-dashboard-avatar"><i class="fa-solid fa-user-doctor"></i></div>
 </div>
 
 </div>
@@ -4282,6 +4278,9 @@ Already have an account?
 <nav id="staffBottomNav" class="staff-bottom-nav" aria-label="Staff navigation">
   <button type="button" data-staff-destination="dashboard" aria-current="page" onclick="staffNavigateTo('dashboard')">
     <i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span>
+  </button>
+  <button type="button" data-staff-destination="appointments" onclick="staffNavigateTo('appointments')">
+    <i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Appointments</span>
   </button>
   <button type="button" data-staff-destination="scanner" onclick="staffNavigateTo('scanner')">
     <i class="fa-solid fa-qrcode" aria-hidden="true"></i><span>QR Scanner</span>
@@ -7207,7 +7206,10 @@ STAFF PORTAL FEATURES
 
 function refreshStaffPortal() {
 
-document.getElementById('staffPortalNameDisplay').innerText = currentSession.data.name || currentSession.data.fullName || 'Staff Member';
+const staffName = currentSession.data.name || currentSession.data.fullName || 'Staff Member';
+document.getElementById('staffPortalNameDisplay').innerText = staffName;
+const dashboardName = document.getElementById('staffDashboardName');
+if (dashboardName) dashboardName.innerText = staffName;
 
 document.getElementById('staffAssignedTaskDisplay').innerText = currentSession.data.task || "General Triage";
 
@@ -7216,21 +7218,31 @@ if (profileRole) profileRole.innerText = currentSession.data.role_title || curre
 
 const profilePhoto = document.getElementById('staffProfilePhoto');
 const profilePlaceholder = document.getElementById('staffProfilePhotoPlaceholder');
+const dashboardPhoto = document.getElementById('staffDashboardPhoto');
+const dashboardPlaceholder = document.getElementById('staffDashboardPhotoPlaceholder');
 const photoUrl = String(currentSession.data.photo || currentSession.data.profilePhoto || '').trim();
-if (profilePhoto && profilePlaceholder) {
-  profilePhoto.onerror = function() {
-    profilePhoto.hidden = true;
-    profilePlaceholder.hidden = false;
-  };
+if (profilePhoto && profilePlaceholder && dashboardPhoto && dashboardPlaceholder) {
+  const photoElements = [profilePhoto, dashboardPhoto];
+  const placeholderElements = [profilePlaceholder, dashboardPlaceholder];
+  photoElements.forEach(photo => {
+    photo.onerror = function() {
+      photoElements.forEach(element => { element.hidden = true; });
+      placeholderElements.forEach(element => { element.hidden = false; });
+    };
+  });
   if (photoUrl) {
-    profilePhoto.src = photoUrl;
-    profilePhoto.alt = 'Profile photo of ' + (currentSession.data.name || 'staff member');
-    profilePhoto.hidden = false;
-    profilePlaceholder.hidden = true;
+    photoElements.forEach(photo => {
+      photo.src = photoUrl;
+      photo.alt = 'Profile photo of ' + staffName;
+      photo.hidden = false;
+    });
+    placeholderElements.forEach(placeholder => { placeholder.hidden = true; });
   } else {
-    profilePhoto.removeAttribute('src');
-    profilePhoto.hidden = true;
-    profilePlaceholder.hidden = false;
+    photoElements.forEach(photo => {
+      photo.removeAttribute('src');
+      photo.hidden = true;
+    });
+    placeholderElements.forEach(placeholder => { placeholder.hidden = false; });
   }
 }
 
@@ -7314,6 +7326,14 @@ window.handleStaffProfilePhotoUpload = async function(event) {
       profilePhoto.hidden = false;
       placeholder.hidden = true;
     }
+    const dashboardPhoto = document.getElementById('staffDashboardPhoto');
+    const dashboardPlaceholder = document.getElementById('staffDashboardPhotoPlaceholder');
+    if (dashboardPhoto && dashboardPlaceholder) {
+      dashboardPhoto.src = result.data;
+      dashboardPhoto.alt = 'Profile photo of ' + (currentSession.data.name || currentSession.data.fullName || 'staff member');
+      dashboardPhoto.hidden = false;
+      dashboardPlaceholder.hidden = true;
+    }
     setStatus('Profile photo saved. Patients will see it in Doctors & Staff.');
   } catch (error) {
     console.error('[ERecPass] Staff profile photo upload failed:', error);
@@ -7387,7 +7407,7 @@ async function renderStaffApprovedAppointments() {
         : 'Time not provided';
       const reason = escapeStaffDashboardText(a.reason || 'Appointment');
       return '<div class="appointment-card p-3 rounded-xl border border-emerald-400/25 bg-emerald-950/20">' +
-        '<div class="flex items-start justify-between gap-3"><div class="min-w-0 flex-1">' +
+        '<div class="staff-appointment-layout"><div class="staff-appointment-details min-w-0 flex-1">' +
         '<strong class="staff-appointment-name block break-words">' + patientName + '</strong>' +
         '<p class="staff-appointment-reason mt-1">' + reason + '</p>' +
         '<p class="staff-appointment-meta mt-1"><i class="fa-solid fa-user-doctor mr-1"></i>' + doctor + '</p>' +
@@ -7431,11 +7451,16 @@ async function renderStaffHospitalAnnouncements() {
       const photo = String(a.photo || a.image_url || '').trim();
       const photoHtml = photo ? '<div class="mt-3 overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950/40"><img src="' + escapeStaffDashboardText(photo) + '" alt="Hospital announcement image" class="photo-viewable w-full max-h-80 object-contain rounded-xl" loading="lazy" title="Tap to view, zoom in, and zoom out" onerror="this.parentElement.style.display=\'none\';"></div>' : '';
       return '<article class="glass-card p-3 rounded-xl border border-cyan-500/20">' +
-        '<div class="flex items-start gap-2"><i class="fa-solid fa-bullhorn text-cyan-400 mt-0.5"></i><div class="min-w-0 flex-1">' +
+        '<div class="staff-announcement-heading">' +
+        '<div class="flex items-start gap-2 min-w-0"><i class="fa-solid fa-bullhorn text-cyan-400 mt-0.5" aria-hidden="true"></i><div class="min-w-0 flex-1">' +
         '<h3 class="staff-announcement-title text-sm font-bold">' + title + '</h3>' +
         (date ? '<p class="staff-announcement-date mt-1">' + date + '</p>' : '') +
-        (text ? '<p class="staff-announcement-body mt-1 whitespace-pre-wrap break-words">' + text + '</p>' : '') +
-        photoHtml + '</div></div></article>';
+        '</div></div>' +
+        '<button type="button" class="staff-announcement-toggle" onclick="toggleStaffAnnouncement(this)" aria-expanded="true" aria-label="Minimize announcement" title="Minimize announcement">' +
+        '<i class="fa-solid fa-minus" aria-hidden="true"></i><span>Minimize</span></button></div>' +
+        '<div class="staff-announcement-content">' +
+        (text ? '<p class="staff-announcement-body mt-2 whitespace-pre-wrap break-words">' + text + '</p>' : '') +
+        photoHtml + '</div></article>';
     });
     container.innerHTML = announcementHtml.join('');
   } catch (error) {
@@ -7443,6 +7468,20 @@ async function renderStaffHospitalAnnouncements() {
     container.innerHTML = '<p class="staff-update-error p-2">Unable to load updates. Please refresh.</p>';
   }
 }
+
+window.toggleStaffAnnouncement = function(button) {
+  const card = button?.closest('#staffHospitalAnnouncementsList article');
+  const content = card?.querySelector('.staff-announcement-content');
+  if (!button || !content) return;
+  const expanded = button.getAttribute('aria-expanded') === 'true';
+  content.hidden = expanded;
+  button.setAttribute('aria-expanded', String(!expanded));
+  button.setAttribute('aria-label', expanded ? 'Expand announcement' : 'Minimize announcement');
+  button.title = expanded ? 'Expand announcement' : 'Minimize announcement';
+  button.innerHTML = expanded
+    ? '<i class="fa-solid fa-plus" aria-hidden="true"></i><span>Show</span>'
+    : '<i class="fa-solid fa-minus" aria-hidden="true"></i><span>Minimize</span>';
+};
 
 // Refresh the two read-only staff dashboard lists while the staff portal is open.
 if (!window.erecpassStaffDashboardRefreshTimer) {
@@ -9823,12 +9862,26 @@ html.ep-dark #patientApp .header-actions #epSettingsPanel #patientSettingsEmerge
 #adminApp .admin-header-actions #epSettings{position:relative;top:auto;right:auto;z-index:30;flex:0 0 auto;font:600 12px Arial,sans-serif}
 #adminApp .admin-header-actions #epSettingsPanel{position:absolute;top:calc(100% + 8px);right:0;margin:0;min-width:184px;flex-direction:column;align-items:stretch}
 #adminApp .admin-header-actions #epSettingsPanel :is(#adminSettingsEmergency,#adminSettingsApp){background:#fff1f2;color:#a7192a;border-color:#fecdd3}
+#staffApp .staff-header #epSettings{position:relative;top:auto;right:auto;z-index:30;flex:0 0 auto;font:600 12px Arial,sans-serif}
+#staffApp .staff-header #epSettingsToggle{border-color:#76C98A;background:#EAF8ED;color:#245B35}
+#staffApp .staff-header #epSettingsPanel{border-color:#76C98A}
+#staffApp .staff-header #epSettingsPanel button{border-color:#76C98A}
+#staffApp .staff-header #epSettingsToggle:focus-visible,
+#staffApp .staff-header #epSettingsPanel button:focus-visible{outline:2px solid #245B35;outline-offset:2px}
+#staffApp .staff-header #epSettingsPanel{position:absolute;top:calc(100% + 8px);right:0;margin:0;min-width:176px;flex-direction:column;align-items:stretch}
+html.ep-dark #staffApp .staff-header #epSettingsToggle{background:#203b29!important;color:#b7e9c1!important;border-color:#72bd82!important}
+html.ep-dark #staffApp .staff-header #epSettingsPanel{background:#182b20!important;border-color:#72bd82!important}
+html.ep-dark #staffApp .staff-header #epSettingsPanel button{background:#203b29!important;color:#d4e5d7!important;border-color:#396448!important}
+html.ep-dark #staffApp .staff-header #epSettingsPanel #staffSettingsLogout{background:#48232b!important;color:#ffd8dd!important;border-color:#396448!important}
+html.ep-dark #staffApp .staff-header #epSettingsToggle:focus-visible,
+html.ep-dark #staffApp .staff-header #epSettingsPanel button:focus-visible{outline-color:#8FDAA0}
 html.ep-dark #adminApp .admin-header-actions #epSettingsPanel :is(#adminSettingsEmergency,#adminSettingsApp){background:#48232b!important;color:#ffd8dd!important;border-color:#87414d!important}
 </style>
 <div id="epSettings" aria-label="Settings">
 <button type="button" id="epSettingsToggle" aria-label="Open settings" aria-expanded="false">⚙️</button>
 <div id="epSettingsPanel" role="menu" aria-label="Settings">
 <button type="button" id="epThemeBtn" role="menuitem">🌙 Dark</button>
+<button type="button" id="staffSettingsLogout" class="hidden" role="menuitem" onclick="document.getElementById('epSettings').classList.remove('ep-open'); document.getElementById('epSettingsToggle').setAttribute('aria-expanded','false'); logout()"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Log out</button>
 <button type="button" id="patientSettingsEmergency" class="hidden" role="menuitem" onclick="document.getElementById('epSettings').classList.remove('ep-open'); document.getElementById('epSettingsToggle').setAttribute('aria-expanded','false'); openEmergencyModal()"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Emergency</button>
 <button type="button" id="patientSettingsLogout" class="hidden" role="menuitem" onclick="document.getElementById('epSettings').classList.remove('ep-open'); document.getElementById('epSettingsToggle').setAttribute('aria-expanded','false'); logout()"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Log out</button>
 <button type="button" id="adminSettingsApp" class="hidden" role="menuitem" onclick="document.getElementById('epSettings').classList.remove('ep-open'); document.getElementById('epSettingsToggle').setAttribute('aria-expanded','false'); uipaquibsOpenSettings()"><i class="fa-solid fa-sliders" aria-hidden="true"></i> Logo &amp; emergency settings</button>
@@ -9841,6 +9894,9 @@ html.ep-dark #adminApp .admin-header-actions #epSettingsPanel :is(#adminSettings
 const root=document.documentElement,settings=document.getElementById('epSettings'),settingsToggle=document.getElementById('epSettingsToggle'),themeBtn=document.getElementById('epThemeBtn');
 const patientHeaderActions=document.querySelector('#patientApp .header-actions');
 const patientRoot=document.getElementById('patientApp');
+const staffRoot=document.getElementById('staffApp');
+const staffHeader=document.querySelector('#staffApp .staff-header');
+const staffSettingsLogout=document.getElementById('staffSettingsLogout');
 const adminRoot=document.getElementById('adminApp');
 const adminHeaderActions=document.querySelector('#adminApp .admin-header-actions');
 const adminSettingsLogout=document.getElementById('adminSettingsLogout');
@@ -9857,8 +9913,10 @@ function updateAdminSettingsAction(){
 function placeAppearanceControl(){
   if(!settings)return;
   const patientVisible=patientRoot && !patientRoot.classList.contains('hidden') && getComputedStyle(patientRoot).display!=='none';
+  const staffVisible=staffRoot && !staffRoot.classList.contains('hidden') && getComputedStyle(staffRoot).display!=='none';
   const adminVisible=adminRoot && !adminRoot.classList.contains('hidden') && getComputedStyle(adminRoot).display!=='none';
   patientSettingsActions.forEach(action=>action?.classList.toggle('hidden',!patientVisible));
+  staffSettingsLogout?.classList.toggle('hidden',!staffVisible);
   adminSettingsLogout?.classList.toggle('hidden',!adminVisible);
   adminSettingsEmergency?.classList.toggle('hidden',!adminVisible);
   adminSettingsApp?.classList.toggle('hidden',!adminVisible);
@@ -9867,6 +9925,9 @@ function placeAppearanceControl(){
   if(patientVisible && patientHeaderActions){
     settings.classList.remove('ep-global-settings');
     if(settings.parentElement!==patientHeaderActions || settings!==patientHeaderActions.lastElementChild) patientHeaderActions.appendChild(settings);
+  }else if(staffVisible && staffHeader){
+    settings.classList.remove('ep-global-settings','ep-auth-global-settings');
+    if(settings.parentElement!==staffHeader || settings!==staffHeader.lastElementChild) staffHeader.appendChild(settings);
   }else if(adminVisible && adminHeaderActions){
     settings.classList.remove('ep-global-settings','ep-auth-global-settings');
     if(settings.parentElement!==adminHeaderActions) adminHeaderActions.appendChild(settings);
@@ -9877,6 +9938,7 @@ function placeAppearanceControl(){
 }
 placeAppearanceControl();
 if(patientRoot)new MutationObserver(placeAppearanceControl).observe(patientRoot,{attributes:true,attributeFilter:['class','style']});
+if(staffRoot)new MutationObserver(placeAppearanceControl).observe(staffRoot,{attributes:true,attributeFilter:['class','style']});
 document.querySelectorAll('#patientApp .page').forEach(patientPage=>{
   new MutationObserver(placeAppearanceControl).observe(patientPage,{attributes:true,attributeFilter:['class']});
 });
@@ -14578,7 +14640,7 @@ document.addEventListener('keydown', event => {
     left: 50%;
     bottom: 14px;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     width: min(980px, calc(100% - 32px));
     min-height: 76px;
     padding: 8px;
@@ -14720,7 +14782,8 @@ document.addEventListener('keydown', event => {
 
   html.ep-dark #loginPage,
   html.ep-dark #registerPage,
-  html.ep-dark #staffLoginPage {
+  html.ep-dark #staffLoginPage,
+  html.ep-dark #adminLoginPage {
     background:
       radial-gradient(ellipse at 12% 18%, rgba(88,190,115,.18), transparent 42%),
       linear-gradient(140deg, #10241a 0%, #14271e 55%, #10251c 100%) !important;
@@ -14738,7 +14801,8 @@ document.addEventListener('keydown', event => {
   html.ep-dark #staffLoginPage .auth-medical-ecg .auth-ecg-pulse { stroke: #8FDAA0; }
   html.ep-dark #loginPage .auth-card,
   html.ep-dark #registerPage .auth-card,
-  html.ep-dark #staffLoginPage .auth-card {
+  html.ep-dark #staffLoginPage .auth-card,
+  html.ep-dark #adminLoginPage .auth-card {
     border-color: #36553d !important;
     background: rgba(24,43,32,.96) !important;
   }
@@ -14750,13 +14814,199 @@ document.addEventListener('keydown', event => {
   html.ep-dark #loginPage :is(.logo h1,label),
   html.ep-dark #registerPage :is(.logo h1,label),
   html.ep-dark #staffLoginPage :is(.logo h1,label) { color: #b7e9c1 !important; }
+  html.ep-dark #adminLoginPage .logo h1 { color: #ffd1d8 !important; }
+  html.ep-dark #adminLoginPage label { color: #ffb9c5 !important; }
   html.ep-dark #loginPage .input-box,
   html.ep-dark #registerPage .input-box,
-  html.ep-dark #staffLoginPage .input-box { border-color: #3d6048 !important; background: #14251b !important; }
+  html.ep-dark #staffLoginPage .input-box,
+  html.ep-dark #adminLoginPage .input-box { border-color: #3d6048 !important; background: #14251b !important; }
   html.ep-dark #loginPage .input-box input,
   html.ep-dark #registerPage .input-box input,
   html.ep-dark #staffLoginPage .input-box input { color: #edf8ef !important; }
+  html.ep-dark #adminLoginPage .input-box input {
+    color: #edf8ef !important;
+    background: transparent !important;
+    border: 0 !important;
+  }
+  html.ep-dark #adminLoginPage .input-box input::placeholder { color: #9db5a3 !important; opacity: 1; }
+  html.ep-dark #adminLoginPage .input-box i { color: #ff9eae !important; }
+  html.ep-dark #adminLoginPage .logo > div:first-child {
+    background: #48232b !important;
+    border-color: #87414d !important;
+    color: #ffd8dd !important;
+  }
+  html.ep-dark #adminLoginPage button[type="submit"] {
+    border: 1px solid #87414d !important;
+    background: #713846 !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+  html.ep-dark #adminLoginPage button[type="submit"]:is(:hover,:focus-visible) {
+    background: #884454 !important;
+    border-color: #d78391 !important;
+    box-shadow: 0 0 0 2px rgba(255,185,197,.2) !important;
+  }
+  html.ep-dark #adminLoginPage button[onclick="showLogin()"] { color: #c3d2c7 !important; }
+  html.ep-dark #adminLoginPage button[onclick="showLogin()"]:is(:hover,:focus-visible) { color: #ffd1d8 !important; }
   html.ep-dark #registerPage button[onclick="showLogin()"] { color: #8FDAA0 !important; }
+  html:not(.ep-dark) #loginPage #guestHelpLoginBtn {
+    background: #EAF8ED !important;
+    border-color: #D5E8D9 !important;
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+  }
+  html:not(.ep-dark) #loginPage #guestHelpLoginBtn:is(:hover,:focus-visible) {
+    background: #DDF1E2 !important;
+    border-color: #76C98A !important;
+    box-shadow: 0 0 0 2px rgba(36,91,53,.12) !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .glass-card {
+    background: #fff !important;
+    border-color: #D5E8D9 !important;
+    color: #52665A !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal h2 {
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal label {
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal :is(p,button) {
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal :is(.input-box,.chat-input) {
+    border-color: #D5E8D9 !important;
+    background: #f9fcfa !important;
+    color: #334b3a !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .input-box:focus-within {
+    border-color: #76C98A !important;
+    box-shadow: 0 0 0 3px rgba(36,91,53,.12) !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .input-box i { color: #245B35 !important; }
+  html:not(.ep-dark) #guestHelpCenterModal :is(input,textarea) { color: #334b3a !important; }
+  html:not(.ep-dark) #guestHelpCenterModal .input-box input,
+  html:not(.ep-dark) #guestHelpCenterModal #guestHelpReplyInput {
+    background: transparent !important;
+    border: 0 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal #guestHelpMessage {
+    background: #f9fcfa !important;
+    border-color: #D5E8D9 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal :is(input,textarea)::placeholder {
+    color: #829489 !important;
+    opacity: 1;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal button.primary-btn {
+    border: 1px solid #16834b !important;
+    background: linear-gradient(110deg, #16834b, #22a653) !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    box-shadow: 0 8px 20px rgba(22,131,75,.18) !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal button.primary-btn:is(:hover,:focus-visible) {
+    background: linear-gradient(110deg, #126f40, #188b45) !important;
+    border-color: #126f40 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal #guestHelpReplyInput + button {
+    background: #245B35 !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .help-status {
+    border-color: #D5E8D9 !important;
+    color: #245B35 !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .help-user {
+    background: #245B35 !important;
+    color: #fff !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .help-admin {
+    background: #EAF8ED !important;
+    color: #334b3a !important;
+  }
+  html:not(.ep-dark) #guestHelpCenterModal .help-meta { color: #718477 !important; }
+  html.ep-dark #loginPage #guestHelpLoginBtn {
+    background: #1b3525 !important;
+    border-color: #396448 !important;
+    color: #b7e9c1 !important;
+    -webkit-text-fill-color: #b7e9c1 !important;
+  }
+  html.ep-dark #loginPage #guestHelpLoginBtn:is(:hover,:focus-visible) {
+    background: #244c31 !important;
+    border-color: #72bd82 !important;
+    box-shadow: 0 0 0 2px rgba(143,218,160,.2) !important;
+  }
+  html.ep-dark #loginPage button[onclick="showAdminLogin()"] {
+    background: #48232b !important;
+    border-color: #87414d !important;
+    color: #ffd8dd !important;
+    -webkit-text-fill-color: #ffd8dd !important;
+  }
+  html.ep-dark #loginPage button[onclick="showAdminLogin()"]:is(:hover,:focus-visible) {
+    background: #5a2c37 !important;
+    border-color: #c87382 !important;
+    box-shadow: 0 0 0 2px rgba(255,185,197,.2) !important;
+  }
+  html.ep-dark #guestHelpCenterModal .glass-card {
+    background: #182b20 !important;
+    border-color: #36553d !important;
+    color: #edf8ef !important;
+  }
+  html.ep-dark #guestHelpCenterModal :is(h2,label) {
+    color: #b7e9c1 !important;
+    -webkit-text-fill-color: #b7e9c1 !important;
+  }
+  html.ep-dark #guestHelpCenterModal :is(p,button) {
+    color: #d4e5d7 !important;
+    -webkit-text-fill-color: #d4e5d7 !important;
+  }
+  html.ep-dark #guestHelpCenterModal :is(.input-box,.chat-input) {
+    border-color: #3d6048 !important;
+    background: #14251b !important;
+    color: #edf8ef !important;
+  }
+  html.ep-dark #guestHelpCenterModal .input-box i { color: #8FDAA0 !important; }
+  html.ep-dark #guestHelpCenterModal :is(input,textarea) { color: #edf8ef !important; }
+  html.ep-dark #guestHelpCenterModal .input-box input,
+  html.ep-dark #guestHelpCenterModal #guestHelpReplyInput {
+    background: transparent !important;
+    border: 0 !important;
+  }
+  html.ep-dark #guestHelpCenterModal #guestHelpMessage {
+    background: #14251b !important;
+    border-color: #3d6048 !important;
+  }
+  html.ep-dark #guestHelpCenterModal :is(input,textarea)::placeholder { color: #9db5a3 !important; opacity: 1; }
+  html.ep-dark #guestHelpCenterModal #guestHelpReplyInput + button {
+    background: #245B35 !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+  }
+  html.ep-dark #guestHelpCenterModal button.primary-btn {
+    border: 1px solid #396448 !important;
+    background: #245B35 !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    box-shadow: 0 4px 12px rgba(36,91,53,.28) !important;
+  }
+  html.ep-dark #guestHelpCenterModal button.primary-btn:is(:hover,:focus-visible) {
+    background: #2d7545 !important;
+    border-color: #72bd82 !important;
+  }
+  html.ep-dark #guestHelpCenterModal .help-user {
+    background: #245B35 !important;
+    color: #fff !important;
+  }
+  html.ep-dark #guestHelpCenterModal .help-admin {
+    background: #203b29 !important;
+    color: #e2f1e5 !important;
+  }
+  html.ep-dark #guestHelpCenterModal .help-meta { color: #a9c2ae !important; }
   html.ep-dark #loginPage .primary-btn,
   html.ep-dark #registerPage .primary-btn,
   html.ep-dark #staffLoginPage .primary-btn,
@@ -15235,7 +15485,7 @@ document.addEventListener('keydown', event => {
       align-items: flex-start;
     }
     #patientApp #patientDoctorsList .patient-staff-availability { margin-top: auto; }
-    #staffApp [data-staff-panel="dashboard"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #staffApp [data-staff-panel="dashboard"] { grid-template-columns: minmax(0, 1fr); }
     #staffApp .staff-page-heading,
     #staffApp #staffDashboardCard { grid-column: 1 / -1; }
   }
@@ -15756,8 +16006,7 @@ document.addEventListener('keydown', event => {
       panel.setAttribute('aria-hidden', String(!active));
     });
     nav.querySelectorAll('button[data-staff-destination]').forEach(button => {
-      const active = button.dataset.staffDestination === destination ||
-        (destination === 'appointments' && button.dataset.staffDestination === 'dashboard');
+      const active = button.dataset.staffDestination === destination;
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
@@ -15772,6 +16021,721 @@ document.addEventListener('keydown', event => {
     }
   }, { once: true });
 </script>
+
+<style id="erecpass-staff-account-green-polish">
+  #staffApp #staffDashboardCard {
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 24px;
+    padding: 24px !important;
+    border: 1px solid #D5E8D9 !important;
+    border-radius: 22px !important;
+    background: linear-gradient(135deg, #fff 0%, #F4FBF5 100%) !important;
+    box-shadow: 0 12px 30px rgba(36,91,53,.08) !important;
+  }
+  #staffApp .staff-dashboard-identity-copy { min-width: 0; }
+  #staffApp .staff-dashboard-eyebrow {
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  #staffApp .staff-dashboard-welcome {
+    margin-top: 5px;
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+    font-family: Inter, sans-serif !important;
+    font-size: 19px !important;
+    font-weight: 600 !important;
+    line-height: 1.35;
+  }
+  #staffApp #staffDashboardName {
+    display: block;
+    margin-top: 3px;
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+    font-size: clamp(28px, 3.8vw, 36px);
+    font-weight: 750;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  #staffApp .staff-dashboard-caption {
+    margin-top: 7px;
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  #staffApp .staff-dashboard-photo-wrap {
+    display: grid;
+    width: 128px;
+    height: 128px;
+    flex: 0 0 128px;
+    place-items: center;
+    padding: 3px;
+    border: 1px solid #C5DFC9;
+    border-radius: 18px;
+    background: linear-gradient(145deg, #EAF8ED, #D5E8D9);
+    box-shadow: 0 4px 12px rgba(36,91,53,.12);
+  }
+  #staffApp .staff-dashboard-photo,
+  #staffApp .staff-dashboard-avatar {
+    width: 120px;
+    height: 120px;
+    min-width: 120px;
+    min-height: 120px;
+    flex: 0 0 120px;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border: 2px solid #fff;
+    border-radius: 13px;
+    box-shadow: 0 1px 4px rgba(36,91,53,.12);
+  }
+  #staffApp .staff-dashboard-photo {
+    display: block;
+    object-fit: cover;
+    object-position: center;
+  }
+  #staffApp .staff-dashboard-avatar {
+    display: grid;
+    place-items: center;
+    background: #EAF8ED;
+    color: #245B35;
+    font-size: 44px;
+  }
+  #staffApp .staff-dashboard-photo[hidden],
+  #staffApp .staff-dashboard-avatar[hidden] { display: none !important; }
+  @media (max-width: 640px) {
+    #staffApp #staffDashboardCard { gap: 14px; padding: 18px !important; }
+    #staffApp .staff-dashboard-eyebrow { font-size: 12px; }
+    #staffApp .staff-dashboard-welcome { font-size: 16px !important; }
+    #staffApp #staffDashboardName { font-size: clamp(24px, 6vw, 30px); }
+    #staffApp .staff-dashboard-caption { font-size: 14px; }
+    #staffApp .staff-dashboard-photo-wrap { width: 96px; height: 96px; flex-basis: 96px; }
+    #staffApp .staff-dashboard-photo,
+    #staffApp .staff-dashboard-avatar {
+      width: 88px;
+      height: 88px;
+      min-width: 88px;
+      min-height: 88px;
+      flex-basis: 88px;
+    }
+    #staffApp .staff-dashboard-avatar { font-size: 32px; }
+  }
+  @media (max-width: 380px) {
+    #staffApp #staffDashboardCard { gap: 10px; padding: 14px !important; }
+    #staffApp .staff-dashboard-eyebrow { font-size: 11px; }
+    #staffApp .staff-dashboard-welcome { font-size: 15px !important; }
+    #staffApp #staffDashboardName { font-size: 24px; }
+    #staffApp .staff-dashboard-caption { font-size: 12px; }
+    #staffApp .staff-dashboard-photo-wrap { width: 76px; height: 76px; flex-basis: 76px; }
+    #staffApp .staff-dashboard-photo,
+    #staffApp .staff-dashboard-avatar {
+      width: 68px;
+      height: 68px;
+      min-width: 68px;
+      min-height: 68px;
+      flex-basis: 68px;
+    }
+    #staffApp .staff-dashboard-avatar { font-size: 26px; }
+  }
+  html.ep-dark #staffApp #staffDashboardCard {
+    border-color: #36553D !important;
+    background: linear-gradient(135deg, #182B20 0%, #203B29 100%) !important;
+    box-shadow: 0 12px 30px rgba(0,0,0,.2) !important;
+  }
+  html.ep-dark #staffApp .staff-dashboard-eyebrow,
+  html.ep-dark #staffApp .staff-dashboard-welcome,
+  html.ep-dark #staffApp .staff-dashboard-caption {
+    color: #B7D1BC !important;
+    -webkit-text-fill-color: #B7D1BC !important;
+  }
+  html.ep-dark #staffApp #staffDashboardName {
+    color: #B7E9C1 !important;
+    -webkit-text-fill-color: #B7E9C1 !important;
+  }
+  html.ep-dark #staffApp .staff-dashboard-photo-wrap {
+    border-color: #45694E;
+    background: linear-gradient(145deg, #294B33, #203B29);
+  }
+  html.ep-dark #staffApp .staff-dashboard-photo,
+  html.ep-dark #staffApp .staff-dashboard-avatar { border-color: #182B20; }
+  html.ep-dark #staffApp .staff-dashboard-avatar {
+    background: #203B29;
+    color: #B7E9C1;
+  }
+  #staffApp .staff-announcement-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  #staffApp .staff-announcement-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid #C5DFC9;
+    border-radius: 9px;
+    background: #F0F8F1;
+    color: #245B35;
+    font: 600 11px/1.2 Inter, sans-serif;
+    white-space: nowrap;
+  }
+  #staffApp .staff-announcement-toggle:hover { background: #E3F2E6; }
+  #staffApp .staff-announcement-toggle:focus-visible {
+    outline: 3px solid rgba(36,91,53,.28);
+    outline-offset: 2px;
+  }
+  #staffApp .staff-announcement-content[hidden] { display: none !important; }
+  html.ep-dark #staffApp .staff-announcement-toggle {
+    border-color: #45694E;
+    background: #203B29;
+    color: #B7E9C1;
+  }
+  html.ep-dark #staffApp .staff-announcement-toggle:hover { background: #294B33; }
+  #staffApp .staff-profile-card {
+    border: 1px solid #D5E8D9 !important;
+    border-radius: 22px !important;
+    background: linear-gradient(160deg, #fff 0%, #f8fcf9 100%) !important;
+    box-shadow: 0 16px 38px rgba(36,91,53,.09) !important;
+    color: #334B3A !important;
+  }
+  #staffApp .staff-profile-card .staff-panel-heading {
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+  }
+  #staffApp .staff-profile-summary {
+    align-items: center;
+    flex-direction: row-reverse;
+    border-color: #D5E8D9 !important;
+    background: linear-gradient(135deg, #F4FBF5 0%, #EAF8ED 100%) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  #staffApp .staff-profile-photo-wrap {
+    display: grid;
+    width: 112px;
+    height: 112px;
+    flex: 0 0 112px;
+    place-items: center;
+    padding: 3px;
+    border: 1px solid #C5DFC9;
+    border-radius: 18px;
+    background: linear-gradient(145deg, #EAF8ED, #D5E8D9);
+    box-shadow: 0 4px 12px rgba(36,91,53,.12);
+  }
+  #staffApp .staff-profile-photo,
+  #staffApp .staff-profile-avatar {
+    width: 104px;
+    height: 104px;
+    min-width: 104px;
+    min-height: 104px;
+    flex: 0 0 104px;
+    aspect-ratio: 1;
+    place-items: center;
+    overflow: hidden;
+    border: 2px solid #fff;
+    border-radius: 13px;
+    box-shadow: 0 1px 4px rgba(36,91,53,.12);
+  }
+  #staffApp .staff-profile-photo {
+    display: block;
+    object-fit: cover;
+    object-position: center;
+  }
+  #staffApp .staff-profile-avatar {
+    display: grid;
+    place-items: center;
+    object-fit: cover;
+  }
+  #staffApp .staff-profile-photo[hidden],
+  #staffApp .staff-profile-avatar[hidden] { display: none !important; }
+  #staffApp .staff-profile-avatar {
+    background: #EAF8ED !important;
+    color: #245B35 !important;
+    font-size: 38px;
+  }
+  #staffApp #staffPortalNameDisplay {
+    color: #245B35 !important;
+    -webkit-text-fill-color: #245B35 !important;
+  }
+  #staffApp .staff-profile-card .staff-profile-label,
+  #staffApp .staff-profile-card .staff-profile-note,
+  #staffApp .staff-profile-card .staff-profile-photo-status {
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+  }
+  #staffApp .staff-profile-card .staff-profile-task {
+    color: #334B3A !important;
+    -webkit-text-fill-color: #334B3A !important;
+  }
+  #staffApp .staff-profile-photo-upload {
+    right: -2px;
+    bottom: -2px;
+    width: 30px;
+    height: 30px;
+    border: 2px solid #fff;
+    background: #245B35 !important;
+    color: #fff !important;
+    box-shadow: 0 3px 8px rgba(36,91,53,.24);
+  }
+  #staffApp .staff-profile-photo-upload:hover { background: #174426 !important; }
+  #staffApp .staff-profile-photo-upload:focus-visible {
+    outline: 3px solid rgba(36,91,53,.28);
+    outline-offset: 2px;
+  }
+  @media (max-width: 640px) {
+    #staffApp .staff-profile-summary { gap: 14px; }
+    #staffApp .staff-profile-photo-wrap { width: 96px; height: 96px; flex-basis: 96px; }
+    #staffApp .staff-profile-photo,
+    #staffApp .staff-profile-avatar {
+      width: 88px;
+      height: 88px;
+      min-width: 88px;
+      min-height: 88px;
+      flex-basis: 88px;
+    }
+    #staffApp .staff-profile-avatar { font-size: 32px; }
+  }
+  html.ep-dark #staffApp .staff-profile-card {
+    border-color: #36553D !important;
+    background: linear-gradient(160deg, #182B20 0%, #14251B 100%) !important;
+    box-shadow: 0 16px 38px rgba(0,0,0,.2) !important;
+    color: #E5F1E8 !important;
+  }
+  html.ep-dark #staffApp .staff-profile-card .staff-panel-heading {
+    color: #B7E9C1 !important;
+    -webkit-text-fill-color: #B7E9C1 !important;
+  }
+  html.ep-dark #staffApp .staff-profile-summary {
+    border-color: #45694E !important;
+    background: linear-gradient(135deg, #203B29 0%, #1B3525 100%) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  html.ep-dark #staffApp .staff-profile-photo-wrap {
+    border-color: #45694E;
+    background: linear-gradient(145deg, #294B33, #203B29);
+  }
+  html.ep-dark #staffApp .staff-profile-photo,
+  html.ep-dark #staffApp .staff-profile-avatar { border-color: #182B20; }
+  html.ep-dark #staffApp .staff-profile-avatar {
+    background: #203B29 !important;
+    color: #B7E9C1 !important;
+  }
+  html.ep-dark #staffApp #staffPortalNameDisplay {
+    color: #B7E9C1 !important;
+    -webkit-text-fill-color: #B7E9C1 !important;
+  }
+  html.ep-dark #staffApp .staff-profile-card .staff-profile-label,
+  html.ep-dark #staffApp .staff-profile-card .staff-profile-note,
+  html.ep-dark #staffApp .staff-profile-card .staff-profile-photo-status {
+    color: #B7D1BC !important;
+    -webkit-text-fill-color: #B7D1BC !important;
+  }
+  html.ep-dark #staffApp .staff-profile-card .staff-profile-task {
+    color: #E5F1E8 !important;
+    -webkit-text-fill-color: #E5F1E8 !important;
+  }
+  html.ep-dark #staffApp .staff-profile-photo-upload {
+    border-color: #182B20;
+    background: #2C7545 !important;
+    color: #fff !important;
+  }
+  #staffApp .staff-portal-content,
+  #staffApp .staff-tab-panel,
+  #staffApp .staff-tab-panel > *,
+  #staffApp .staff-tab-panel .glass-card { min-width: 0; }
+  #staffApp .staff-portal-content {
+    width: calc(100% - 32px);
+    max-width: 1120px;
+    margin-inline: auto;
+  }
+  #staffApp .staff-profile-card {
+    width: 100%;
+    max-width: 760px;
+    margin-inline: auto;
+    padding: clamp(16px, 2.4vw, 26px) !important;
+  }
+  #staffApp #staffApprovedAppointmentsCard,
+  #staffApp #staffHospitalAnnouncementsCard,
+  #staffApp #staffAllAppointmentsCard,
+  #staffApp #staffQrScannerCard,
+  #staffApp #staffAdminChatCard { padding: clamp(16px, 2.2vw, 24px) !important; }
+  #staffApp #staffApprovedAppointmentsList,
+  #staffApp #staffAllApprovedAppointmentsList,
+  #staffApp #staffHospitalAnnouncementsList { min-width: 0; }
+  #staffApp #staffHospitalAnnouncementsList > article,
+  #staffApp .staff-appointments-list > .appointment-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  #staffApp .staff-appointment-layout {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  #staffApp .staff-appointment-details { min-width: 0; }
+  #staffApp .staff-appointment-status { flex: 0 0 auto; }
+  #staffApp .staff-profile-summary { min-width: 0; }
+  #staffApp .staff-profile-summary > .min-w-0 { flex: 1 1 auto; }
+  #staffApp #staffBottomNav { bottom: max(14px, env(safe-area-inset-bottom)); }
+
+  @media (min-width: 1200px) {
+    #staffApp .staff-portal-content { width: calc(100% - 48px); }
+    #staffApp [data-staff-panel="dashboard"] { gap: 22px; }
+    #staffApp #staffDashboardCard { padding: 28px !important; }
+  }
+  @media (min-width: 768px) and (max-width: 1199px) {
+    #staffApp .staff-portal-content { width: calc(100% - 40px); }
+    #staffApp [data-staff-panel="dashboard"] { gap: 18px; }
+    #staffApp #staffDashboardCard { gap: 20px; padding: 22px !important; }
+  }
+  @media (max-width: 767px) {
+    #staffApp .staff-header { padding-inline: 12px !important; }
+    #staffApp .staff-header .brand { min-width: 0; }
+    #staffApp .staff-header .brand strong {
+      overflow: hidden;
+      font-size: clamp(12px, 3.8vw, 15px) !important;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #staffApp .staff-portal-content {
+      width: calc(100% - 24px);
+      padding-top: 76px !important;
+      padding-bottom: 112px !important;
+    }
+    #staffApp [data-staff-panel="dashboard"] { gap: 14px; }
+    #staffApp #staffDashboardCard { gap: 14px; }
+    #staffApp .staff-dashboard-identity-copy { flex: 1 1 auto; }
+    #staffApp #staffApprovedAppointmentsCard > div:first-child {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    #staffApp .staff-secondary-action { max-width: 100%; }
+    #staffApp #staffAllAppointmentsCard > div:first-child {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    #staffApp .staff-profile-summary { gap: 14px; padding: 16px; }
+    #staffApp #staffBottomNav {
+      bottom: max(8px, env(safe-area-inset-bottom));
+      width: calc(100% - 20px);
+      min-height: 68px;
+      gap: 3px;
+      padding: 6px;
+      border-radius: 17px;
+    }
+    #staffApp #staffBottomNav button {
+      min-height: 52px;
+      gap: 3px;
+      padding: 5px 3px;
+      font-size: 11px;
+    }
+    #staffApp #staffBottomNav button i { font-size: 18px; }
+    #staffApp #staffBottomNav button span { overflow-wrap: normal; }
+    #staffApp #staffAdminChatCard .chat-input { align-items: stretch; }
+    #staffApp #staffAdminChatCard .chat-input button { flex: 0 0 auto; }
+  }
+  @media (max-width: 480px) {
+    #staffApp .staff-portal-content { width: calc(100% - 20px); }
+    #staffApp #staffDashboardCard { gap: 10px; padding: 16px !important; }
+    #staffApp .staff-dashboard-eyebrow { font-size: 11px; }
+    #staffApp .staff-dashboard-welcome { font-size: 15px !important; }
+    #staffApp #staffDashboardName { font-size: clamp(22px, 6vw, 28px); }
+    #staffApp .staff-dashboard-caption { font-size: 13px; }
+    #staffApp #staffApprovedAppointmentsCard,
+    #staffApp #staffHospitalAnnouncementsCard,
+    #staffApp #staffAllAppointmentsCard,
+    #staffApp #staffQrScannerCard,
+    #staffApp #staffAdminChatCard { padding: 16px !important; }
+    #staffApp .staff-appointments-list > .appointment-card { padding: 12px !important; }
+    #staffApp .staff-appointment-layout { gap: 8px; }
+    #staffApp .staff-appointment-name { font-size: 15px !important; }
+    #staffApp .staff-appointment-reason { font-size: 14px !important; }
+    #staffApp .staff-appointment-meta { font-size: 13px !important; }
+    #staffApp .staff-appointment-status { font-size: 10px !important; }
+    #staffApp .staff-announcement-heading { gap: 8px; }
+    #staffApp .staff-announcement-toggle { gap: 4px; padding-inline: 7px; font-size: 10px; }
+    #staffApp .staff-profile-summary { gap: 12px; padding: 14px; }
+    #staffApp .staff-profile-card .staff-profile-name { font-size: 20px; }
+    #staffApp .staff-profile-card .staff-profile-task { font-size: 14px; }
+    #staffApp #staffBottomNav button { font-size: 10px; }
+  }
+  @media (max-width: 380px) {
+    #staffApp #staffDashboardCard { gap: 8px; padding: 13px !important; }
+    #staffApp .staff-dashboard-photo-wrap { width: 76px; height: 76px; flex-basis: 76px; }
+    #staffApp .staff-dashboard-photo,
+    #staffApp .staff-dashboard-avatar {
+      width: 68px;
+      height: 68px;
+      min-width: 68px;
+      min-height: 68px;
+      flex-basis: 68px;
+    }
+    #staffApp .staff-dashboard-avatar { font-size: 26px; }
+    #staffApp .staff-profile-summary { gap: 10px; padding: 12px; }
+    #staffApp .staff-profile-photo-wrap { width: 80px; height: 80px; flex-basis: 80px; }
+    #staffApp .staff-profile-photo,
+    #staffApp .staff-profile-avatar {
+      width: 72px;
+      height: 72px;
+      min-width: 72px;
+      min-height: 72px;
+      flex-basis: 72px;
+    }
+    #staffApp .staff-profile-avatar { font-size: 27px; }
+    #staffApp .staff-appointment-layout { flex-direction: column-reverse; gap: 8px; }
+    #staffApp .staff-appointment-status { align-self: flex-start; }
+    #staffApp .staff-appointment-meta { font-size: 12px !important; }
+    #staffApp .staff-announcement-toggle span { display: none; }
+    #staffApp #staffBottomNav { width: calc(100% - 12px); gap: 1px; }
+    #staffApp #staffBottomNav button { padding-inline: 1px; font-size: 9px; }
+  }
+  #staffApp #staffBottomNav button[data-staff-destination="dashboard"] { --staff-nav-accent: #16834B; --staff-nav-tint: rgba(22,131,75,.12); }
+  #staffApp #staffBottomNav button[data-staff-destination="appointments"] { --staff-nav-accent: #168A83; --staff-nav-tint: rgba(22,138,131,.12); }
+  #staffApp #staffBottomNav button[data-staff-destination="scanner"] { --staff-nav-accent: #7256B8; --staff-nav-tint: rgba(114,86,184,.12); }
+  #staffApp #staffBottomNav button[data-staff-destination="chat"] { --staff-nav-accent: #3976C5; --staff-nav-tint: rgba(57,118,197,.12); }
+  #staffApp #staffBottomNav button[data-staff-destination="profile"] { --staff-nav-accent: #B7791F; --staff-nav-tint: rgba(183,121,31,.12); }
+  #staffApp #staffBottomNav button {
+    position: relative;
+    border-color: transparent !important;
+    background: transparent !important;
+    color: #52665A !important;
+    box-shadow: none !important;
+    gap: 3px;
+    padding-top: 11px;
+    transition: color .2s ease, border-color .2s ease, transform .2s ease;
+  }
+  #staffApp #staffBottomNav button i {
+    position: relative;
+    top: 5px;
+    color: var(--staff-nav-accent) !important;
+    transition: transform .2s ease, filter .2s ease;
+  }
+  #staffApp #staffBottomNav button span {
+    position: relative;
+    top: 5px;
+    color: #52665A !important;
+    -webkit-text-fill-color: #52665A !important;
+  }
+  #staffApp #staffBottomNav button:is(:hover,:focus-visible) {
+    border-color: var(--staff-nav-accent) !important;
+    background: transparent !important;
+    color: var(--staff-nav-accent) !important;
+    outline: none !important;
+    box-shadow: none !important;
+    transform: translateY(-2px) scale(1.025) !important;
+  }
+  #staffApp #staffBottomNav button[aria-current="page"] {
+    border-color: transparent !important;
+    background: var(--staff-nav-tint) !important;
+    color: var(--staff-nav-accent) !important;
+    box-shadow: 0 0 14px var(--staff-nav-tint) !important;
+  }
+  #staffApp #staffBottomNav button:is(:hover,:focus-visible,[aria-current="page"]) span {
+    color: var(--staff-nav-accent) !important;
+    -webkit-text-fill-color: var(--staff-nav-accent) !important;
+  }
+  #staffApp #staffBottomNav button:is(:hover,:focus-visible) i {
+    transform: translateY(-1px) scale(1.08);
+    filter: drop-shadow(0 2px 5px var(--staff-nav-tint));
+  }
+  @keyframes staff-nav-selected-glow {
+    0%, 100% { box-shadow: 0 0 8px var(--staff-nav-tint); }
+    50% { box-shadow: 0 0 16px var(--staff-nav-tint); }
+  }
+  #staffApp #staffBottomNav button[aria-current="page"] {
+    animation: staff-nav-selected-glow 2.4s ease-in-out infinite;
+  }
+  #staffApp #staffBottomNav button:active { transform: scale(.97) !important; }
+  #staffApp #staffBottomNav button::before { display: none !important; }
+  #staffApp #staffBottomNav button::after {
+    display: block !important;
+    top: 5px;
+    width: 0;
+    height: 3px;
+    background: var(--staff-nav-accent) !important;
+    box-shadow: 0 0 8px var(--staff-nav-accent);
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: width .24s ease, opacity .2s ease;
+  }
+  #staffApp #staffBottomNav button:is(:hover,:focus-visible,[aria-current="page"])::after {
+    width: 22px;
+    opacity: 1;
+  }
+  html.ep-dark #staffApp #staffBottomNav button {
+    background: transparent !important;
+    color: #B7D1BC !important;
+  }
+  html.ep-dark #staffApp #staffBottomNav button span {
+    color: #B7D1BC !important;
+    -webkit-text-fill-color: #B7D1BC !important;
+  }
+  html.ep-dark #staffApp #staffBottomNav button i { color: var(--staff-nav-accent) !important; }
+  html.ep-dark #staffApp #staffBottomNav button:is(:hover,:focus-visible,[aria-current="page"]) {
+    background: transparent !important;
+    color: var(--staff-nav-accent) !important;
+  }
+  html.ep-dark #staffApp #staffBottomNav button:is(:hover,:focus-visible) {
+    border-color: var(--staff-nav-accent) !important;
+    box-shadow: none !important;
+  }
+  html.ep-dark #staffApp #staffBottomNav button[aria-current="page"] {
+    border-color: transparent !important;
+    background: var(--staff-nav-tint) !important;
+    box-shadow: 0 0 14px var(--staff-nav-tint) !important;
+  }
+  html.ep-dark #staffApp #staffBottomNav button:is(:hover,:focus-visible,[aria-current="page"]) span {
+    color: var(--staff-nav-accent) !important;
+    -webkit-text-fill-color: var(--staff-nav-accent) !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #staffApp #staffBottomNav button,
+    #staffApp #staffBottomNav button i,
+    #staffApp #staffBottomNav button::after {
+      transition: none !important;
+      animation: none !important;
+      filter: none !important;
+    }
+    #staffApp #staffBottomNav button:is(:hover,:focus-visible,:active) {
+      transform: none !important;
+    }
+    #staffApp #staffBottomNav button:is(:hover,:focus-visible) i { transform: none !important; }
+  }
+  @media (max-width: 767px) {
+    #staffApp #staffBottomNav button { gap: 3px; padding-top: 10px; }
+  }
+  @media (max-width: 380px) {
+    #staffApp #staffBottomNav button { gap: 3px; padding-top: 9px; }
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) {
+    --patient-nav-accent: #3976C5;
+    --patient-nav-tint: rgba(57,118,197,.12);
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #52665A !important;
+    transition: color .2s ease, border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  #patientApp #patientBottomNav #nav-dashboard { --patient-nav-accent: #3976C5; --patient-nav-tint: rgba(57,118,197,.12); }
+  #patientApp #patientBottomNav #nav-hospital-map { --patient-nav-accent: #16834B; --patient-nav-tint: rgba(22,131,75,.12); }
+  #patientApp #patientBottomNav #nav-medicines { --patient-nav-accent: #8052C8; --patient-nav-tint: rgba(128,82,200,.12); }
+  #patientApp #patientBottomNav #nav-doctors { --patient-nav-accent: #168A83; --patient-nav-tint: rgba(22,138,131,.12); }
+  #patientApp #patientBottomNav #nav-profile { --patient-nav-accent: #C34D91; --patient-nav-tint: rgba(195,77,145,.12); }
+  #patientApp #patientBottomNav #nav-appointments { --patient-nav-accent: #B7791F; --patient-nav-tint: rgba(183,121,31,.12); }
+  #patientApp #patientBottomNav #nav-medical-records { --patient-nav-accent: #D9485F; --patient-nav-tint: rgba(217,72,95,.12); }
+  #patientApp #patientBottomNav #nav-qr { --patient-nav-accent: #168FB5; --patient-nav-tint: rgba(22,143,181,.12); }
+  #patientApp #patientBottomNav #nav-help { --patient-nav-accent: #D96535; --patient-nav-tint: rgba(217,101,53,.12); }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) i {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+    transition: transform .2s ease, filter .2s ease;
+  }
+  #patientApp #patientBottomNav :is(#nav-dashboard,#nav-hospital-map,#nav-medicines,#nav-doctors,#nav-profile,#nav-appointments,#nav-medical-records,#nav-qr,#nav-help) i {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra)::before {
+    background: var(--patient-nav-accent) !important;
+    box-shadow: 0 0 8px var(--patient-nav-accent);
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) {
+    border-color: var(--patient-nav-accent) !important;
+    background: transparent !important;
+    color: var(--patient-nav-accent) !important;
+    box-shadow: none !important;
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(.active,[aria-current="page"]) {
+    border-color: transparent !important;
+    background: var(--patient-nav-tint) !important;
+    color: var(--patient-nav-accent) !important;
+    box-shadow: 0 0 14px var(--patient-nav-tint) !important;
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible,.active,[aria-current="page"]) span {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+  }
+  #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) i {
+    transform: translateY(-1px) scale(1.08);
+    filter: drop-shadow(0 2px 5px var(--patient-nav-tint));
+  }
+  #patientApp #patientBottomNav :is(#nav-dashboard,#nav-hospital-map,#nav-medicines,#nav-doctors,#nav-profile,#nav-appointments,#nav-medical-records,#nav-qr,#nav-help):is(:hover,:focus-visible,.active,[aria-current="page"]) i {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+    filter: none;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) {
+    background: transparent !important;
+    color: #B7D1BC !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) {
+    border-color: var(--patient-nav-accent) !important;
+    background: transparent !important;
+    color: var(--patient-nav-accent) !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(.active,[aria-current="page"]) {
+    border-color: transparent !important;
+    background: var(--patient-nav-tint) !important;
+    box-shadow: 0 0 14px var(--patient-nav-tint) !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible,.active,[aria-current="page"]) span {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav .patient-primary-nav::before,
+  html.ep-dark #patientApp #patientBottomNav .patient-nav-menu .patient-nav-extra::before {
+    background: var(--patient-nav-accent) !important;
+    box-shadow: 0 0 8px var(--patient-nav-accent);
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(#nav-dashboard,#nav-hospital-map,#nav-medicines,#nav-doctors,#nav-profile,#nav-appointments,#nav-medical-records,#nav-qr,#nav-help):is(:hover,:focus-visible,.active,[aria-current="page"]) i {
+    color: var(--patient-nav-accent) !important;
+    -webkit-text-fill-color: var(--patient-nav-accent) !important;
+    filter: none;
+  }
+  @media (max-width: 1023px) {
+    #patientApp #patientBottomNav .patient-nav-menu .patient-nav-extra::before { display: none; }
+    #patientApp #patientBottomNav .patient-nav-menu .patient-nav-extra:is(:hover,:focus-visible) {
+      transform: translateX(2px);
+    }
+  }
+  html:not(.ep-dark) #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) {
+    border-color: transparent !important;
+  }
+  html:not(.ep-dark) #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(.active,[aria-current="page"]) {
+    border-color: transparent !important;
+  }
+  html:not(.ep-dark) #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) {
+    border-color: var(--patient-nav-accent) !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) {
+    border-color: transparent !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(.active,[aria-current="page"]) {
+    border-color: transparent !important;
+  }
+  html.ep-dark #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) {
+    border-color: var(--patient-nav-accent) !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra),
+    #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra) i {
+      transition: none !important;
+      animation: none !important;
+      filter: none !important;
+    }
+    #patientApp #patientBottomNav :is(.patient-primary-nav,.patient-nav-menu .patient-nav-extra):is(:hover,:focus-visible) {
+      transform: none !important;
+    }
+  }
+</style>
 
 </body>
 </html>
