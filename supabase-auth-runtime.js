@@ -23,9 +23,7 @@
     window._erecpassPendingEmail = cleanEmail(email);
     const page = document.getElementById('waitingConfirmPage');
     const label = document.getElementById('waitingConfirmEmail');
-    const emailInput = document.getElementById('verifyCodeEmail');
     if (label) label.textContent = window._erecpassPendingEmail;
-    if (emailInput && window._erecpassPendingEmail) emailInput.value = window._erecpassPendingEmail;
     document.querySelectorAll('.auth-page').forEach(el => el.classList.add('hidden'));
     if (page) { page.classList.remove('hidden'); page.style.display = 'flex'; }
   }
@@ -36,27 +34,6 @@
     });
     if (error) throw error;
   }
-
-  window.verifySignupCode = async function () {
-    const email = cleanEmail(document.getElementById('verifyCodeEmail')?.value || window._erecpassPendingEmail);
-    const token = String(document.getElementById('verifySignupToken')?.value || '').replace(/\s/g, '');
-    if (!email || !token) { alert('Enter the email address and verification code from your email.'); return; }
-    const button = document.getElementById('verifySignupButton');
-    if (button) { button.disabled = true; button.textContent = 'VERIFYING…'; }
-    try {
-      const { error } = await client().auth.verifyOtp({ email, token, type: 'signup' });
-      if (error) throw error;
-      await client().auth.signOut();
-      window._erecpassPendingEmail = email;
-      window.showLogin?.();
-      alert('Email verified. Sign in with your email and password to finish setting up your account.');
-    } catch (error) {
-      console.error('[ERecPass] Email code verification failed:', error);
-      alert('Could not verify that code: ' + (error.message || error));
-    } finally {
-      if (button) { button.disabled = false; button.textContent = 'VERIFY EMAIL'; }
-    }
-  };
 
   function showAuthError(error, roleLabel) {
     const message = String(error?.message || error || 'Sign in failed.');
@@ -250,7 +227,7 @@
       }
       document.getElementById('registerForm')?.reset();
       showPendingVerification(email);
-      alert('A Supabase verification code was sent to ' + email + '. Enter it on the verification screen, then sign in here.');
+      alert('A Supabase confirmation email was sent to ' + email + '. Follow the instructions in the email, then sign in here.');
     } catch (error) {
       console.error('[ERecPass] Patient registration failed:', error);
       const message = String(error?.message || error || 'Registration failed.');
@@ -313,8 +290,8 @@
     showPendingVerification(email || window._erecpassPendingEmail || '');
   };
   window.resendConfirmEmailFromWaiting = async function () {
-    const email = cleanEmail(document.getElementById('verifyCodeEmail')?.value || window._erecpassPendingEmail || document.getElementById('regEmail')?.value);
-    if (!email) { alert('Enter the email address you registered with, then request a new verification email.'); return; }
+    const email = cleanEmail(window._erecpassPendingEmail || document.getElementById('regEmail')?.value);
+    if (!email) { alert('The registered email address is unavailable. Return to registration and try again.'); return; }
     try { await resendSignupEmail(email); alert('A new Supabase verification email was sent to ' + email + '.'); }
     catch (error) { alert('Could not resend the verification email: ' + (error.message || error)); }
   };

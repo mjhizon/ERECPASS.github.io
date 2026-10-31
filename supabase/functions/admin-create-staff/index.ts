@@ -36,12 +36,15 @@ Deno.serve(async (request: Request) => {
   const fullName = String(body.fullName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  const roleTitle = String(body.roleTitle || "Staff").trim();
+  const accountType = String(body.accountType || "").trim().toLowerCase();
+  const professionalTitle = String(body.professionalTitle || "").trim();
+  const roleTitle = accountType === "nurse" ? "Nurse" : accountType === "doctor" ? "Doctor" : "Staff";
   const task = String(body.task || "General Duty").trim();
   // Default to the safer verified flow. An Admin can temporarily turn off
   // Staff-only email confirmation with STAFF_EMAIL_VERIFICATION_REQUIRED=false.
   const requireEmailVerification = (Deno.env.get("STAFF_EMAIL_VERIFICATION_REQUIRED") || "true").trim().toLowerCase() !== "false";
   if (!fullName || !email || !password) return reply(400, { ok: false, error: "Name, email, and password are required." });
+  if (!["nurse", "doctor", "other"].includes(accountType)) return reply(400, { ok: false, error: "Choose Nurse, Doctor, or Other Staff." });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { ok: false, error: "Enter a valid Staff email address." });
   if (password.length < 8 || !/[#!?]/.test(password)) return reply(400, { ok: false, error: "Password must be at least 8 characters and contain one of these symbols: # ! ?" });
 
@@ -62,6 +65,7 @@ Deno.serve(async (request: Request) => {
     }
     const { error: staffError } = await admin.from("staff").upsert({
       id: userId, user_id: userId, name: fullName, email,
+      account_type: accountType, professional_title: professionalTitle,
       role_title: roleTitle, task, available: true, schedule: "Mon-Sat", active: true,
     }, { onConflict: "id" });
     if (staffError) {
@@ -70,12 +74,14 @@ Deno.serve(async (request: Request) => {
     }
     return reply(200, { ok: true, confirmationSent: false, verificationRequired: false, staff: {
       id: userId, user_id: userId, name: fullName, email,
-      role: roleTitle, task, available: true, schedule: "Mon-Sat", active: true,
+      role: roleTitle, account_type: accountType, professional_title: professionalTitle,
+      task, available: true, schedule: "Mon-Sat", active: true,
     } });
   }
 
   const { error: pendingError } = await admin.from("pending_staff_accounts").insert({
-    user_id: userId, email, full_name: fullName, role_title: roleTitle, task,
+    user_id: userId, email, full_name: fullName, role_title: roleTitle,
+    account_type: accountType, professional_title: professionalTitle, task,
   });
   if (pendingError) {
     await admin.auth.admin.deleteUser(userId);

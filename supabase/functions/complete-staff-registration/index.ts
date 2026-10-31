@@ -26,7 +26,7 @@ Deno.serve(async (request: Request) => {
   if (!user.email_confirmed_at) return reply(403, { ok: false, error: "Verify your Supabase email before finishing Staff setup." });
 
   const { data: pending, error: pendingError } = await admin
-    .from("pending_staff_accounts").select("user_id,email,full_name,role_title,task")
+    .from("pending_staff_accounts").select("user_id,email,full_name,role_title,account_type,professional_title,task")
     .eq("user_id", user.id).maybeSingle();
   if (pendingError) return reply(500, { ok: false, error: pendingError.message });
 
@@ -53,7 +53,8 @@ Deno.serve(async (request: Request) => {
 
   const staffRow = {
     id: user.id, user_id: user.id, name: pending.full_name, email: pending.email,
-    role_title: pending.role_title, task: pending.task,
+    role_title: pending.role_title, account_type: pending.account_type,
+    professional_title: pending.professional_title, task: pending.task,
     available: true, schedule: "Mon-Sat", active: true,
   };
   const { error: staffSaveError } = await admin.from("staff").upsert(staffRow, { onConflict: "id" });

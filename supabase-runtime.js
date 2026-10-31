@@ -5,8 +5,8 @@
   let role='anon',user=null,loading=false,channel=null,queue=Promise.resolve();
   const sb=()=>window.erecpassSupabase,putSettings=v=>cache.set(K.T,JSON.stringify(v||{})),parse=(s,d=[])=>{try{return JSON.parse(s||'null')??d}catch{return d}},put=(k,v)=>cache.set(k,typeof v==='string'?v:JSON.stringify(v)),err=(s,e)=>console.error('[ERecPass cloud] '+s,e);
   const patient=p=>({id:p.id,user_id:p.user_id,fullName:p.full_name,email:p.email,sim:p.sim,photo:p.photo,birthDate:p.birth_date||'',birth_date:p.birth_date||'',age:p.age??null,ageCategory:p.age_category,age_category:p.age_category,gender:p.gender||'',bloodType:p.blood_type||'',blood_type:p.blood_type||'',address:p.address||'',guardianName:p.guardian_name||'',guardian_name:p.guardian_name||'',guardianNum:p.guardian_num,guardian_num:p.guardian_num,status:p.status,labResults:p.lab_results||[],lab_results:p.lab_results||[],prescriptions:p.prescriptions||[],doctorNotes:p.doctor_notes||'',doctor_notes:p.doctor_notes||'',online:!!p.online,active:p.active!==false});
-  const staff=s=>({id:s.id,user_id:s.user_id,name:s.name,email:s.email,role:s.role_title,task:s.task,available:s.available,schedule:s.schedule,photo:s.photo||'',active:s.active!==false});
-  const appt=a=>({id:a.legacy_id||a.id,patientId:a.patient_id,patientName:a.patient_name,doctor:a.doctor,date:a.appointment_date,reason:a.reason,status:a.status,created_by:a.created_by});
+  const staff=s=>({id:s.id,user_id:s.user_id,name:s.name,email:s.email,role:s.account_type||s.role_title,account_type:s.account_type||'',professional_title:s.professional_title||'',role_title:s.role_title,task:s.task,available:s.available,schedule:s.schedule,photo:s.photo||'',active:s.active!==false});
+  const appt=a=>({id:a.legacy_id||a.id,patientId:a.patient_id,patientName:a.patient_name,doctor:a.doctor,date:a.appointment_date,time:a.appointment_time||null,preferredTime:a.preferred_time||null,reason:a.reason,status:a.status,created_by:a.created_by});
   const ann=a=>({id:a.legacy_id||a.id,text:a.body,photo:a.photo,date:a.published_on});
   const msg=m=>({id:m.legacy_id||m.id,user_id:m.user_id,fullName:m.full_name,email:m.email,message:m.message,reply:m.admin_reply,status:m.status,date:m.created_at});
   async function hydrate(){
@@ -70,7 +70,7 @@
       }
       if(channel)await sb().removeChannel(channel);
       channel=sb().channel('erecpass-sync-'+u.id);
-      ['patients','staff','appointments','announcements','help_center_messages','activity_logs','app_settings'].forEach(t=>channel.on('postgres_changes',{event:'*',schema:'public',table:t},()=>{if(!loading)hydrate().catch(e=>err('realtime refresh',e))}));
+      ['patients','staff','appointments','announcements','help_center_messages','activity_logs','app_settings','doctor_profiles','staff_availability','staff_unavailability','appointment_notifications','appointment_actor_notifications','appointment_audit_logs','doctor_admin_audit_logs'].forEach(t=>channel.on('postgres_changes',{event:'*',schema:'public',table:t},()=>{if(!loading)hydrate().catch(e=>err('realtime refresh',e))}));
       channel.subscribe();
     }finally{loading=false}
   }
@@ -120,7 +120,7 @@
           }
         }
       }else if(k===K.S&&role==='admin'){
-        const rows=a.map(s=>({id:String(s.id),user_id:s.user_id||null,name:s.name||s.fullName||'',email:s.email||'',role_title:s.role||s.role_title||'',task:s.task||'',available:s.available!==false,schedule:s.schedule||'',photo:s.photo||'',active:s.active!==false}));
+        const rows=a.map(s=>({id:String(s.id),user_id:s.user_id||null,name:s.name||s.fullName||'',email:s.email||'',role_title:s.role_title||s.role||'',account_type:s.account_type||'other',professional_title:s.professional_title||'',task:s.task||'',available:s.available!==false,schedule:s.schedule||'',photo:s.photo||'',active:s.active!==false}));
         if(rows.length){
           const r=await client.from('staff').upsert(rows,{onConflict:'id'});if(r.error)throw r.error;
           const vr=await client.from('staff').select('id').in('id',rows.map(x=>x.id));if(vr.error)throw vr.error;
@@ -129,14 +129,9 @@
         const keep=new Set(a.map(x=>String(x.id))),del=old.filter(x=>!keep.has(String(x.id))).map(x=>String(x.id));
         if(del.length){const r=await client.from('staff').delete().in('id',del);if(r.error)throw r.error}
       }else if(k===K.B){
-        const rows=a.map(x=>({legacy_id:String(x.id),patient_id:String(x.patientId||x.patient_id||''),patient_name:x.patientName||x.patient_name||'',doctor:x.doctor||'',appointment_date:x.date||x.appointment_date||null,reason:x.reason||'',status:x.status||'Pending Approval',created_by:user.id}));
-        if(rows.length){
-          const r=await client.from('appointments').upsert(rows,{onConflict:'legacy_id'});if(r.error)throw r.error;
-          const vr=await client.from('appointments').select('legacy_id').in('legacy_id',rows.map(x=>x.legacy_id));if(vr.error)throw vr.error;
-          if((vr.data||[]).length!==rows.length)throw Error('Appointment save could not be verified');
-        }
-        const keep=new Set(a.map(x=>String(x.id))),del=old.filter(x=>!keep.has(String(x.id))).map(x=>String(x.id));
-        if(del.length&&role==='admin'){const r=await client.from('appointments').delete().in('legacy_id',del);if(r.error)throw r.error}
+        // Appointments are server-authoritative. Booking, cancellation, staff
+        // decisions, and admin overrides use checked Supabase RPCs; never
+        // replay local appointment snapshots as table upserts.
       }else if(k===K.N&&role==='admin'){
         const rows=a.map(x=>({legacy_id:String(x.id),body:x.text||x.body||'',photo:x.photo||'',published_on:x.date||x.published_on||null,created_by:user.id}));
         if(rows.length){
